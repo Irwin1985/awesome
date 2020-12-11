@@ -1,6 +1,7 @@
 class Parser
-# Necesitamos decirle al Parser cuáles son los tokens que debe esperar. Por lo tanto cada
-# tipo de token debe ser definido aquí también.
+
+# We need to tell the parser what tokens to expect. So each type of token produced
+# by our lexer needs to be declared here.
 token IF
 token DEF
 token CLASS
@@ -12,203 +13,216 @@ token IDENTIFIER
 token CONSTANT
 token INDENT DEDENT
 
-# Ahora necesitamos definir la tabla de precedencias para los operadores. Esto le dice al Parser
-# en cuál orden se deben ejecutar las expresiones que contengan operadores.
-# Esta tabla está basada en la tabla de precedencias del lenguaje `C`.
-
+# Here is the Operator Precedence Table. As presented before, it tells the parser in
+# which order to parse expressions containing operators.
+# This table is based on the [C and C++ Operator Precedence Table](http://en.wikipedia.org/wiki/Operators_in_C_and_C%2B%2B#Operator_precedence).
 prechigh
-  left '.'
+  left  '.'
   right '!'
-  left '*' '/'
-  left '+' '-'
-  left '>' '>=' '<' '<='
-  left '==' '!='
-  left '&&'
-  left '||'
+  left  '*' '/'
+  left  '+' '-'
+  left  '>' '>=' '<' '<='
+  left  '==' '!='
+  left  '&&'
+  left  '||'
   right '='
-  left ','
+  left  ','
 preclow
 
-# A continuación definiremos las reglas de análisis
-# Todas las reglas deben declararse con el siguiente formato:
+# In the following `rule` section, we define the parsing rules.
+# All rules are declared using the following format:
 #
-#   NombreRegla:
-#       Regla1  TOKEN Regla2 { result = Node.new }
-#     | Regla3               { ... }
+#     RuleName:
+#       OtherRule TOKEN AnotherRule    { result = Node.new }
+#     | OtherRule                      { ... }
 #     ;
 #
-# En la sección de la acción (dentro de las llaves `{acción}`) a la derecha) puedes hacer:
+# In the action section (inside the `{...}` on the right), you can do the following:
 #
-# * Asignar a `result` el valor retornado por la regla, usualmente un ast Node.
-# * usar directamente `val[indice]` para obtener el resultado `result` que hizo match
-#   en la expresión de la izquierda.
-
+# * Assign to `result` the value returned by the rule, usually a node for the AST.
+# * Use `val[index of expression]` to get the `result` of a matched
+#   expressions on the left.
 rule
-  # Para empezar, los Parsers son tontos así que necesitamos decirles explícitamente como
-  # tratar con programas vacíos. Esto es lo que la primera regla hace. Cualquer contenido
-  # dentro de `/*` y `*/` será ignorado.
+  # First, parsers are dumb, we need to explicitly tell it how to handle empty
+  # programs. This is what the first rule does. Note that everything between `/* ... */` is
+  # a comment.
   Program:
-    /* no hagas nada */                     { result = Nodes.new([]) }
-    | Expressions                           { result = val[0] }
-    ;
+    /* nothing */                      { result = Nodes.new([]) }
+  | Expressions                        { result = val[0] }
+  ;
   
-  # A continuación definimos una lista de expresiones. Es una serie de expresiones separadas
-  # por un delimitador (un salto de línea o un `;`). Pero nuevamente debemos indicarle al Parser
-  # cómo debe gestionar las listas vacías o saltos de línea.
+  # Next, we define what a list of expressions is. Simply put, it's series of expressions separated by a
+  # terminator (a new line or `;` as defined later). But once again, we need to explicitly
+  # define how to handle trailing and orphans line breaks (the last two lines).
   #
-  # Usaremos la recursividad por la izquierda ya que es la que nos permite el tipo de parser LR.
+  # One very powerful trick we'll use to define variable rules like this one
+  # (rules which can match any number of tokens) is *left-recursion*. Which means we reference
+  # the rule itself, directly or indirectly, on the left side **only**. This is true for the current
+  # type of parser we're using (LR). For other types of parsers like ANTLR (LL), it's the opposite,
+  # you can only use right-recursion.
   #
-  # Las expresiones serán recursivas ya que una expresión puede contener otras expresiones.
+  # As you'll see bellow, the `Expressions` rule references `Expressions` itself.
+  # In other words, a list of expressions can be another list of expressions followed by
+  # another expression.
   Expressions:
-    Expression                              { result = Nodes.new(val) }
-  | Expressions Terminator Expression       { result = val[0] << val[2] }
-  | Expressions Terminator                  { result = val[0] }
-  | Terminator                              { result = Nodes.new([]) }
+    Expression                         { result = Nodes.new(val) }
+  | Expressions Terminator Expression  { result = val[0] << val[2] }
+  | Expressions Terminator             { result = val[0] }
+  | Terminator                         { result = Nodes.new([]) }
   ;
 
-  # Cada expresión del lenguaje será definida aquí:
+  # Every type of expression supported by our language is defined here.
   Expression:
     Literal
   | Call
   | Operator
   | GetConstant
   | SetConstant
+  | GetLocal
   | SetLocal
   | Def
   | Class
   | If
-  | '(' Expression ')'                  { result = val[1] }
+  | '(' Expression ')'    { result = val[1] }
   ;
 
-  # Al usar parentesis estamos forzando al analisis de la expresión en primer lugar.
+  # Notice how we implement support for parentheses using the previous rule. 
+  # `'(' Expression ')'` will force the parsing of `Expression` in its
+  # entirety first. Parentheses will then be discarded leaving only the fully parsed expression.
   #
-  # Los terminadores son tokens que terminan una expresión.
-  # Cuando se usan tokens para definir reglas, simplemente los referimos a ellos 
-  # por su tipo definido previamente por el lexer.
+  # Terminators are tokens that can terminate an expression.
+  # When using tokens to define rules, we simply reference them by their type which we defined in
+  # the lexer.
   Terminator:
     NEWLINE
   | ";"
   ;
-
-  # Los literales son valores `hard-coded` dentro del programa.
-  Literal:
-    NUMBER                              { result = NumberNode.new(val[0]) }
-  | STRING                              { result = StringNode.new(val[0]) }
-  | TRUE                                { result = TrueNode.new }
-  | FALSE                               { result = FalseNode.new }
-  | NIL                                 { result = NilNode.new }
-  ;
-
-  # Las llamadas a métodos pueden tomar 3 formas:
-  #
-  # 1. Sin receptor (se asume `self`): `metodo(argumentos)`.
-  # 2. Con receptor: `receptor.metodo(argumentos)`.
-  # 3. Y un poco de azucar sintáctica es: si el método no tiene argumentos
-  #    entonces lo podemos invocar sin paréntesis: `receptor.metodo`
-  #
-  # Cada caso se define a continuación:
   
+  # Literals are the hard-coded values inside the program. If you want to add support
+  # for other literal types, such as arrays or hashes, this it where you'd do it.
+  Literal:
+    NUMBER                        { result = NumberNode.new(val[0]) }
+  | STRING                        { result = StringNode.new(val[0]) }
+  | TRUE                          { result = TrueNode.new }
+  | FALSE                         { result = FalseNode.new }
+  | NIL                           { result = NilNode.new }
+  ;
+  
+  # Method calls can take three forms:
+  #
+  # * Without a receiver (`self` is assumed): `method(arguments)`.
+  # * With a receiver: `receiver.method(arguments)`.
+  # * And a hint of syntactic sugar so that we can drop
+  #   the `()` if no arguments are given: `receiver.method`.
+  #
+  # Each one of those is handled by the following rule.
   Call:
-    IDENTIFIER Arguments                { result = CallNode.new(nil, val[0], val[1]) }
+    IDENTIFIER Arguments          { result = CallNode.new(nil, val[0], val[1]) }
   | Expression "." IDENTIFIER
-    Arguments                           { result = CallNode.new(val[0], val[2], val[3]) }
-  | Expression "." IDENTIFIER           { result = CallNode.new(val[0], val[2], []) }
+      Arguments                   { result = CallNode.new(val[0], val[2], val[3]) }
+  | Expression "." IDENTIFIER     { result = CallNode.new(val[0], val[2], []) }
   ;
 
   Arguments:
-    "(" ")"                             { result = [] }
-  | "(" ArgList ")"                     { result = val[1] }
+    "(" ")"                       { result = [] }
+  | "(" ArgList ")"               { result = val[1] }
   ;
 
   ArgList:
-    Expression                          { result = val }
-  | ArgList "," Expression              { result = val[0] << val[2] }
+    Expression                    { result = val }
+  | ArgList "," Expression        { result = val[0] << val[2] }
   ;
+  
 
-  # En nuestro lenguaje los operadores son convertidos en llamadas a métodos
-  # ejemplo: `1 + 2` será `1.+(2)`.
-  # donde `1` es el receptor de la llamada `+` pasando como argumento a `2`
-  # Los operadores deben ser definidos de forma individual.
-
+  # In our language, like in Ruby, operators are converted to method calls.
+  # So `1 + 2` will be converted to `1.+(2)`.
+  # `1` is the receiver of the `+` method call, passing `2`
+  # as an argument.
+  # Operators need to be defined individually for the Operator Precedence Table to take
+  # action.
   Operator:
-    Expression '||' Expression          { result = CallNode.new(val[0], val[1], [val[2]]) }
-  | Expression '&&' Expression          { result = CallNode.new(val[0], val[1], [val[2]]) }
-  | Expression '==' Expression          { result = CallNode.new(val[0], val[1], [val[2]]) }
-  | Expression '!=' Expression          { result = CallNode.new(val[0], val[1], [val[2]]) }
-  | Expression '>' Expression          { result = CallNode.new(val[0], val[1], [val[2]]) }
-  | Expression '>=' Expression          { result = CallNode.new(val[0], val[1], [val[2]]) }
-  | Expression '<' Expression          { result = CallNode.new(val[0], val[1], [val[2]]) }
-  | Expression '<=' Expression          { result = CallNode.new(val[0], val[1], [val[2]]) }
-  | Expression '+' Expression          { result = CallNode.new(val[0], val[1], [val[2]]) }
-  | Expression '-' Expression          { result = CallNode.new(val[0], val[1], [val[2]]) }
-  | Expression '*' Expression          { result = CallNode.new(val[0], val[1], [val[2]]) }
-  | Expression '/' Expression          { result = CallNode.new(val[0], val[1], [val[2]]) }
+    Expression '||' Expression  { result = CallNode.new(val[0], val[1], [val[2]]) }
+  | Expression '&&' Expression  { result = CallNode.new(val[0], val[1], [val[2]]) }
+  | Expression '==' Expression  { result = CallNode.new(val[0], val[1], [val[2]]) }
+  | Expression '!=' Expression  { result = CallNode.new(val[0], val[1], [val[2]]) }
+  | Expression '>'  Expression  { result = CallNode.new(val[0], val[1], [val[2]]) }
+  | Expression '>=' Expression  { result = CallNode.new(val[0], val[1], [val[2]]) }
+  | Expression '<'  Expression  { result = CallNode.new(val[0], val[1], [val[2]]) }
+  | Expression '<=' Expression  { result = CallNode.new(val[0], val[1], [val[2]]) }
+  | Expression '+'  Expression  { result = CallNode.new(val[0], val[1], [val[2]]) }
+  | Expression '-'  Expression  { result = CallNode.new(val[0], val[1], [val[2]]) }
+  | Expression '*'  Expression  { result = CallNode.new(val[0], val[1], [val[2]]) }
+  | Expression '/'  Expression  { result = CallNode.new(val[0], val[1], [val[2]]) }
   ;
-
-  # Reglas para las Constantes globales y variables locales.
+  
+  # Then we have rules for getting and setting values of constants and local variables.
   GetConstant:
-    CONSTANT                            { result = GetConstantNode.new(val[0]) }
+    CONSTANT                      { result = GetConstantNode.new(val[0]) }
   ;
-
+  
   SetConstant:
-    CONSTANT "=" Expression             { result = SetConstantNode.new(val[0], val[2]) }
+    CONSTANT "=" Expression       { result = SetConstantNode.new(val[0], val[2]) }
   ;
 
   GetLocal:
-    IDENTIFIER                          { result = GetLocalNode.new(val[0]) }
+    IDENTIFIER                    { result = GetLocalNode.new(val[0]) }
   ;
-
+  
   SetLocal:
-    IDENTIFIER "=" Expression           { result = SetLocalNode.new(val[0], val[2]) }
+    IDENTIFIER "=" Expression     { result = SetLocalNode.new(val[0], val[2]) }
   ;
 
-  # Nuestro lenguaje usará identación para separar los bloques de código. El Lexer ya 
-  # se encargó de eso y nos devolvió los tokens INDENT y DEDENT respectivamente. Por lo tanto
-  # un bloque de código es simplemente un incremento de INDENT seguido por algún código y 
-  # finalizado con un DEDENT equivalente al IDENT de inicio.
-  #
+  # Our language uses indentation to separate blocks of code. But the lexer took care of all
+  # that complexity for us and wrapped all blocks in `INDENT ... DEDENT`. A block
+  # is simply an increment in indentation followed by some code and closing with an equivalent
+  # decrement in indentation.
+  # 
+  # If you'd like to use curly brackets or `end` to delimit blocks instead, you'd
+  # simply need to modify this one rule.
+  # You'll also need to remove the indentation logic from the lexer.
   Block:
-    INDENT Expressions DEDENT           { result =val[1] }
+    INDENT Expressions DEDENT     { result = val[1] }
   ;
-
-  # La palabra reservada `def` es usada para definir métodos. De igual forma se suprimen 
-  # los paréntesis cuando el método no necesite argumentos.
+  
+  # The `def` keyword is used for defining methods. Once again, we're introducing
+  # a bit of syntactic sugar here to allow skipping the parentheses when there are no parameters.
   Def:
-    DEF IDENTIFIER Block                { result = DefNode.new(val[1], [], val[2]) }
+    DEF IDENTIFIER Block          { result = DefNode.new(val[1], [], val[2]) }
   | DEF IDENTIFIER
-    "(" ParamList ")" Block             { result = DefNode.new(val[1], val[3], val[5]) }
+      "(" ParamList ")" Block     { result = DefNode.new(val[1], val[3], val[5]) }
   ;
 
   ParamList:
-    /* Nada */                          { result = [] }
-  | IDENTIFIER                          { result = val }
-  | ParamList "," IDENTIFIER            { result = val[0] << val[2] }
+    /* nothing */                 { result = [] }
+  | IDENTIFIER                    { result = val }
+  | ParamList "," IDENTIFIER      { result = val[0] << val[2] }
   ;
-
-  # La definición de una clase es similar a la de un método.
-  # Las clases son también constantes porque ellas comienzan con mayúscula.
+  
+  # Class definition is similar to method definition.
+  # Class names are also constants because they start with a capital letter.
   Class:
-    CLASS CONSTANT Block                { result = ClassNode.new(val[1], val[2]) }
+    CLASS CONSTANT Block          { result = ClassNode.new(val[1], val[2]) }
   ;
-
-  # Finalmente la estructura de control `if` es similar a `class` pero recibe una condicion.
+  
+  # Finally, `if` is similar to `class` but receives a *condition*.
   If:
-    IF Expression Block                 { result = IfNode.new(val[1], val[2]) }
+    IF Expression Block           { result = IfNode.new(val[1], val[2]) }
   ;
 end
 
-# Puedes colocar código en el (`header`) y también dentro de la clase (`inner`).
+# The final code at the bottom of this Racc file will be put as-is in the generated `Parser` class.
+# You can put some code at the top (`header`) and some inside the class (`inner`).
 ---- header
-  require "../lexer/lexer"
-  require "../node/nodes"
+  require "lexer"
+  require "nodes"
 
 ---- inner
   def parse(code, show_tokens=false)
-    @tokens = Lexer.new.tokenize(code) # Crea los tokens usando el Lexer.
+    @tokens = Lexer.new.tokenize(code) # Tokenize the code using our lexer
     puts @tokens.inspect if show_tokens
-    do_parse # Arranca el proceso de análisis.
+    do_parse # Kickoff the parsing process
   end
-
+  
   def next_token
     @tokens.shift
   end
