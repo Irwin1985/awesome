@@ -1,9 +1,9 @@
-require "../parser/parser"
-require "../runtime/object"
-require "../runtime/class"
-require "../runtime/method"
-require "../runtime/context"
-require "../runtime/bootstrap"
+require "./parser/parser"
+require "./runtime/object"
+require "./runtime/class"
+require "./runtime/method"
+require "./runtime/context"
+require "./runtime/bootstrap"
 
 # Primero creamos una clase envoltorio simple para encapsular el proceso de interpretación.
 # todo lo que hace es analizar el código y llamar al `eval` del nodo root.

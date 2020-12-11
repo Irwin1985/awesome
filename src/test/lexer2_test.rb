@@ -1,5 +1,5 @@
 require "test_helper"
-require "../lexer/lexer"
+require "./lexer/lexer"
 
 class LexerTest2 < Test::Unit::TestCase
     def test_while

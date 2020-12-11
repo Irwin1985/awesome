@@ -1,9 +1,9 @@
 require "test_helper"
-require "../runtime/object.rb"
-require "../runtime/class.rb"
-require "../runtime/method.rb"
-require "../runtime/context.rb"
-require "../runtime/bootstrap.rb"
+require "./runtime/object.rb"
+require "./runtime/class.rb"
+require "./runtime/method.rb"
+require "./runtime/context.rb"
+require "./runtime/bootstrap.rb"
 
 class RuntimeTest < Test::Unit::TestCase
     def test_get_constant

@@ -1,4 +1,4 @@
-require '../parser/parser'
+require './parser/parser'
 require 'test_helper'
 
 class ParserTest < Test::Unit::TestCase

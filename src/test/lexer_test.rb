@@ -1,4 +1,4 @@
-require_relative "../lexer/lexer"
+require_relative "./lexer/lexer"
 require "test_helper"
 
 class LexerTest < Test::Unit::TestCase
