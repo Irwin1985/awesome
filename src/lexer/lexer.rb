@@ -4,11 +4,12 @@ class Lexer
     # First we define the special keywords of our language in a constant.
     # It will be used later on in the tokenizing process to disambiguate
     # an identifier (method name, local variable, etc.) from a keyword.
-    KEYWORDS = ["def", "class", "if", "true", "false", "nil"]
-    
+    KEYWORDS = ["def", "class", "if", "true", "false", "nil", "while"]
+
     def tokenize(code)
       code.chomp! # Remove extra line breaks
       tokens = [] # This will hold the generated tokens
+      parse_indent = true # para determinar si tokenizamos los identadores.
       
       # We need to know how deep we are in the indentation so
       # we keep track of the current indentation level we are in, and previous ones in the stack
@@ -65,7 +66,7 @@ class Lexer
         #
         # This `elsif` takes care of the first case. The number of spaces will determine 
         # the indent level.
-        elsif indent = chunk[/\A\:\n( +)/m, 1] # Matches ": <newline> <spaces>"
+        elsif parse_indent && indent = chunk[/\A\:\n( +)/m, 1] # Matches ": <newline> <spaces>"
           if indent.size <= current_indent # indent should go up when creating a block
             raise "Bad indent level, got #{indent.size} indents, " +
                   "expected > #{current_indent}"
@@ -80,7 +81,7 @@ class Lexer
         # * Case 2: We stay in the same block if the indent level (number of spaces) is the
         #   same as `current_indent`.
         # * Case 3: Close the current block, if indent level is lower than `current_indent`.
-        elsif indent = chunk[/\A\n( *)/m, 1] # Matches "<newline> <spaces>"
+        elsif parse_indent && indent = chunk[/\A\n( *)/m, 1] # Matches "<newline> <spaces>"
           if indent.size == current_indent # Case 2
             tokens << [:NEWLINE, "\n"] # Nothing to do, we're still in the same block
           elsif indent.size < current_indent # Case 3
